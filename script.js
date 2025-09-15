@@ -1,151 +1,223 @@
-// ---- MathJax: garantir que esteja pronto antes de tipografar ----
-async function mjxRender(nodes) {
-  const list = (Array.isArray(nodes) ? nodes : [nodes]).filter(Boolean);
+/* =========================================================================
+   script.js (versão em português)
+   - Nomes de variáveis e funções em PT-BR
+   - Comentários explicando cada etapa
+   - Mesma funcionalidade do original
+   ========================================================================*/
 
-  // espera o MathJax carregar
+/* -------------------------------------------------------------------------
+   MathJax — garantir que a engine esteja pronta antes de tipografar
+   -------------------------------------------------------------------------*/
+/**
+ * Tipografa (renderiza) fórmulas LaTeX com o MathJax, garantindo que a
+ * biblioteca já terminou de carregar. Aceita um elemento ou uma lista deles.
+ */
+async function renderizarMJX(nos) {
+  const lista = (Array.isArray(nos) ? nos : [nos]).filter(Boolean);
+
+  // Aguarda o carregamento do MathJax (quando o script ainda está iniciando)
   if (!window.MathJax?.typesetPromise) {
-    await new Promise((resolve) => {
-      let done = false;
-      const finish = () => { if (!done) { done = true; resolve(); } };
+    await new Promise((resolver) => {
+      let finalizado = false;
+      const concluir = () => { if (!finalizado) { finalizado = true; resolver(); } };
 
-      // quando a página terminar de carregar
+      // Tenta novamente quando a página terminar de carregar
       window.addEventListener('load', () => {
-        if (window.MathJax?.typesetPromise) finish();
-        else setTimeout(finish, 0);
+        if (window.MathJax?.typesetPromise) concluir();
+        else setTimeout(concluir, 0);
       }, { once: true });
 
-      // polling rápido (evita depender só do 'load')
+      // Polling leve enquanto não chega no onload (evita travar)
       const id = setInterval(() => {
-        if (window.MathJax?.typesetPromise) { clearInterval(id); finish(); }
+        if (window.MathJax?.typesetPromise) { clearInterval(id); concluir(); }
       }, 50);
 
-      // timeout de segurança
-      setTimeout(() => { clearInterval(id); finish(); }, 2000);
+      // Timeout de segurança (2s) — segue em frente mesmo sem typesetPromise
+      setTimeout(() => { clearInterval(id); concluir(); }, 2000);
     });
   }
 
   try {
+    // Garante que a inicialização do MathJax terminou
     if (window.MathJax?.startup?.promise) await MathJax.startup.promise;
+
+    // Tipografa os nós solicitados
     if (window.MathJax?.typesetPromise) {
-      await MathJax.typesetPromise(list);
+      await MathJax.typesetPromise(lista);
     }
-  } catch (e) {
-    console.warn('MathJax ainda não pôde tipografar:', e);
+  } catch (erro) {
+    console.warn('MathJax ainda não pôde tipografar:', erro);
   }
 }
 
-
-/* ---------- util UI ---------- */
-function debounce(fn, delay = 300) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+/* -------------------------------------------------------------------------
+   Utilidades de UI
+   -------------------------------------------------------------------------*/
+/**
+ * adiar(fn, atraso) — "debounce":
+ * Retorna uma função que só executa `fn` quando o usuário parar de chamar
+ * por `atraso` ms (útil para não renderizar a cada tecla digitada).
+ */
+function adiar(fn, atraso = 300) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), atraso);
+  };
 }
-const $ = (sel) => document.querySelector(sel);
 
-/* ---------- refs DOM ---------- */
-const input     = $("#latexInput");
-const output    = $("#output");
-const statusBox = $("#status");
-const renderBtn = $("#renderBtn");
-const clearBtn  = $("#clearBtn");
+/** Atalho para querySelector. */
+const selecionar = (seletor) => document.querySelector(seletor);
 
-/* ---------- MathJax: wrap + render preview ---------- */
-function wrapLaTeX(src) {
-  const s = src.trim();
-  const startsWithDisplay = s.startsWith("$$") || s.startsWith("\\[");
-  const startsWithInline  = s.startsWith("$")  || s.startsWith("\\(");
-  if (startsWithDisplay || startsWithInline) return s;
+/* -------------------------------------------------------------------------
+   Referências aos elementos do DOM
+   -------------------------------------------------------------------------*/
+const entrada      = selecionar("#latexInput");
+const saida        = selecionar("#output");
+const caixaStatus  = selecionar("#status");
+const botaoRender  = selecionar("#renderBtn"); // pode não existir no HTML atual
+const botaoLimpar  = selecionar("#clearBtn");
+
+/* -------------------------------------------------------------------------
+   Pré-visualização com MathJax
+   -------------------------------------------------------------------------*/
+/** Envolve o LaTeX com delimitadores de exibição, se o usuário não usou. */
+function envolverLatex(texto) {
+  const s = texto.trim();
+  const comDisplay = s.startsWith("$$") || s.startsWith("\\[");
+  const comInline  = s.startsWith("$")  || s.startsWith("\\(");
+  if (comDisplay || comInline) return s;
   return `$$\n${s}\n$$`;
 }
 
-async function render() {
+/**
+ * Renderiza a pré-visualização e dispara o pipeline de transformações.
+ * - Mostra o LaTeX bruto, envolve com delimitadores, tipografa com MathJax.
+ * - Em seguida, alimenta os painéis (PCNF/PDNF/Cláusal/Horn).
+ */
+async function renderizar() {
   try {
-    const src = (input?.value || "").trim();
-    if (!src) {
-      if (output) output.innerHTML = "";
-      if (statusBox) { statusBox.textContent = ""; statusBox.className = "status"; }
-      clearPanels();
+    const fonte = (entrada?.value || "").trim();
+
+    // Se o campo estiver vazio, limpe a UI e saia
+    if (!fonte) {
+      if (saida) saida.innerHTML = "";
+      if (caixaStatus) { caixaStatus.textContent = ""; caixaStatus.className = "status"; }
+      limparPaineis();
       return;
     }
-    output.textContent = src;
-    output.innerHTML = wrapLaTeX(src);
-    await mjxRender([output]);
-    if (statusBox) { statusBox.textContent = "Renderizado"; statusBox.className = "status ok"; }
-    await runPipelineAndRenderAllSafe(src);
-  } catch (err) {
-    if (statusBox) { statusBox.textContent = "Erro ao renderizar."; statusBox.className = "status err"; }
-    console.error(err);
+
+    // Mostra o LaTeX digitado e, depois, o mesmo LaTeX com delimitadores
+    saida.textContent = fonte;
+    saida.innerHTML = envolverLatex(fonte);
+
+    // Tipografa a prévia
+    await renderizarMJX([saida]);
+
+    // Marca status
+    if (caixaStatus) { caixaStatus.textContent = "Renderizado"; caixaStatus.className = "status ok"; }
+
+    // Executa o pipeline e preenche os painéis
+    await executarPipelineERenderizar(fonte);
+
+  } catch (erro) {
+    if (caixaStatus) { caixaStatus.textContent = "Erro ao renderizar."; caixaStatus.className = "status err"; }
+    console.error(erro);
   }
 }
 
-const renderLive = debounce(render, 300);
-if (input) input.addEventListener("input", renderLive);
-if (renderBtn) renderBtn.addEventListener("click", render);
-if (clearBtn) {
-  clearBtn.addEventListener("click", () => {
-    if (input) input.value = "";
-    if (output) output.innerHTML = "";
-    if (statusBox) { statusBox.textContent = ""; statusBox.className = "status"; }
-    clearPanels();
+// Pré-visualização em tempo real (com debounce)
+const renderizarAoVivo = adiar(renderizar, 300);
+if (entrada)     entrada.addEventListener("input", renderizarAoVivo);
+if (botaoRender) botaoRender.addEventListener("click", renderizar);
+if (botaoLimpar) {
+  botaoLimpar.addEventListener("click", () => {
+    if (entrada) entrada.value = "";
+    if (saida)   saida.innerHTML = "";
+    if (caixaStatus) { caixaStatus.textContent = ""; caixaStatus.className = "status"; }
+    limparPaineis();
   });
 }
-document.addEventListener("DOMContentLoaded", render);
+// Render inicial (útil quando há conteúdo pré-carregado)
+document.addEventListener("DOMContentLoaded", renderizar);
 
-/* ---------- Alternância dos painéis ---------- */
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".pill");
-  if (!btn) return;
-  const targetSel = btn.getAttribute("data-target");
-  const targetPanel = document.querySelector(targetSel);
-  if (!targetPanel) return;
+/* -------------------------------------------------------------------------
+   Alternância (tabs) dos painéis
+   -------------------------------------------------------------------------*/
+document.addEventListener("click", (evento) => {
+  const botao = evento.target.closest(".pill");
+  if (!botao) return;
 
+  const seletorAlvo = botao.getAttribute("data-target");
+  const painelAlvo  = document.querySelector(seletorAlvo);
+  if (!painelAlvo) return;
+
+  // Esconde todos e mostra apenas o painel escolhido
   document.querySelectorAll(".panel").forEach((p) => p.classList.add("hidden"));
-  targetPanel.classList.remove("hidden");
+  painelAlvo.classList.remove("hidden");
 
+  // Marca visualmente o botão ativo
   document.querySelectorAll(".pill").forEach((b) => b.classList.remove("active"));
-  btn.classList.add("active");
+  botao.classList.add("active");
 
-  targetPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Rola suavemente até o painel
+  painelAlvo.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
-/* ---------- Helpers dos painéis ---------- */
-const mjxTargets = [
+/* -------------------------------------------------------------------------
+   Helpers dos painéis (o que é tipografado em LaTeX x o que é texto)
+   -------------------------------------------------------------------------*/
+const alvosMJX = [
   '#pcnf-original','#pcnf-noimp','#pcnf-nnf','#pcnf-std','#pcnf-prenex','#pcnf-final',
   '#pdnf-original','#pdnf-noimp','#pdnf-nnf','#pdnf-std','#pdnf-prenex','#pdnf-final',
   '#claus-original','#claus-noimp','#claus-nnf','#claus-std','#claus-prenex'
 ];
-const codeTargets = ['#claus-skolem','#claus-final','#horn-clauses','#horn-report'];
+const alvosCodigo = ['#claus-skolem','#claus-final','#horn-clauses','#horn-report'];
 
-function clearPanels() {
-  mjxTargets.forEach(sel => { const el = document.querySelector(sel); if (el) el.innerHTML = ''; });
-  codeTargets.forEach(sel => { const el = document.querySelector(sel); if (el) el.innerHTML = ''; });
+/** Limpa todas as caixas dos painéis (sempre antes de preencher de novo). */
+function limparPaineis() {
+  alvosMJX.forEach(sel => { const el = document.querySelector(sel);  if (el) el.innerHTML = ''; });
+  alvosCodigo.forEach(sel => { const el = document.querySelector(sel); if (el) el.innerHTML = ''; });
 }
-function setLatex(sel, latex) {
-  const el = document.querySelector(sel);
+
+/** Injeta LaTeX (será tipografado depois) em um seletor específico. */
+function definirLatex(seletor, latex) {
+  const el = document.querySelector(seletor);
   if (!el) return;
   el.innerHTML = `$$${latex}$$`;
 }
-function escapeHtml(s){ return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-function setCode(sel, text) {
-  const el = document.querySelector(sel);
+
+/** Escapa HTML para exibir texto literalmente (em <pre>). */
+function escaparHTML(s){
+  return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/** Injeta texto em formato de código (com quebras preservadas) em um seletor. */
+function definirCodigo(seletor, texto) {
+  const el = document.querySelector(seletor);
   if (!el) return;
-  const escaped = escapeHtml(text);
-  el.innerHTML = `<pre style="white-space:pre-wrap;margin:0">${escaped}</pre>`;
+  el.innerHTML = `<pre style="white-space:pre-wrap;margin:0">${escaparHTML(texto)}</pre>`;
 }
 
 /* =========================================================================
-   LÓGICA — Parser + Transformações
-   ========================================================================*/
+   MÓDULO DE LÓGICA — Parser e transformações (JS puro)
+   =========================================================================*/
 (function() {
-  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const clonar = (obj) => JSON.parse(JSON.stringify(obj));
 
-  /* --------- Tokenizer robusto --------- */
-  function tokenize(input) {
-    let s = input.trim();
+  /* ---------------------------- Tokenização ---------------------------- */
+  /**
+   * Converte a entrada em uma lista de tokens. É tolerante a variações
+   * de LaTeX (\forall/∀, \exists/∃, \neg/¬/~, \land/∧, \lor/∨, ->, → etc.)
+   * e ignora comandos visuais (\left, \right, \quad, \text{...}, etc.).
+   */
+  function tokenizar(entrada) {
+    let s = entrada.trim();
     const tokens = [];
     let i = 0;
 
-    const kwMap = {
+    // Palavras-chave e símbolos reconhecidos
+    const mapaKW = {
       "\\forall":"FORALL","∀":"FORALL",
       "\\exists":"EXISTS","∃":"EXISTS",
       "\\neg":"NOT","\\lnot":"NOT","¬":"NOT","~":"NOT",
@@ -156,27 +228,30 @@ function setCode(sel, text) {
       "=":"EQ","\\neq":"NEQ","\\ne":"NEQ","≠":"NEQ",
     };
 
-    const skipPunctCmds = new Set(["\\,", "\\;", "\\:", "\\!"]);
-    const skipWordCmds  = new Set([
+    // Comandos puramente visuais/pontuação que podem ser ignorados
+    const comandosPontuacao = new Set(["\\,", "\\;", "\\:", "\\!"]);
+    const comandosVisuais   = new Set([
       "left","right","big","Big","bigg","Bigg","quad","qquad",
       "enspace","hspace","vspace","text","mathrm","operatorname",
       "mathbf","mathit","mathsf","mathtt","color"
     ]);
 
-    function skipBalancedGroup(idx) {
-      while (idx < s.length && s[idx] !== '{') idx++;
-      if (idx >= s.length) return idx;
-      let depth = 0;
-      while (idx < s.length) {
-        const c = s[idx++];
-        if (c === '{') depth++;
-        else if (c === '}') { depth--; if (depth === 0) break; }
+    // Consome um grupo {...} equilibrado (usado para \text{...}, \color{...} etc.)
+    function pularGrupoBalanceado(ind) {
+      while (ind < s.length && s[ind] !== '{') ind++;
+      if (ind >= s.length) return ind;
+      let profundidade = 0;
+      while (ind < s.length) {
+        const c = s[ind++];
+        if (c === '{') profundidade++;
+        else if (c === '}') { profundidade--; if (profundidade === 0) break; }
       }
-      return idx;
+      return ind;
     }
 
-    function matchKeyword() {
-      for (const [k, v] of Object.entries(kwMap)) {
+    // Tenta casar alguma palavra-chave do mapaKW a partir da posição atual
+    function casarPalavraChave() {
+      for (const [k, v] of Object.entries(mapaKW)) {
         if (s.startsWith(k, i)) { i += k.length; return { type: v }; }
       }
       return null;
@@ -185,38 +260,53 @@ function setCode(sel, text) {
     while (i < s.length) {
       const c = s[i];
 
+      // Comentários de LaTeX (% ... até o fim da linha)
       if (c === '%') { while (i < s.length && s[i] !== '\n') i++; continue; }
+
+      // Espaços
       if (/\s/.test(c)) { i++; continue; }
 
+      // Parênteses / Colchetes / Chaves — tratamos todos como LP/RP
       if (c === '(' || c === '[' || c === '{') { tokens.push({ type: 'LP' }); i++; continue; }
       if (c === ')' || c === ']' || c === '}') { tokens.push({ type: 'RP' }); i++; continue; }
 
+      // Vírgulas e separadores
       if (c === ',') { tokens.push({ type: 'COMMA' }); i++; continue; }
       if (c === '.' || c === ':') { tokens.push({ type: 'DOT' }); i++; continue; }
 
+      // Atalhos de implicação / bi-implicação
       if (s.startsWith('->', i))  { tokens.push({ type: 'IMP' }); i += 2; continue; }
       if (s.startsWith('<->', i)) { tokens.push({ type: 'IFF' }); i += 3; continue; }
 
-      const two = s.slice(i, i + 2);
-      if (skipPunctCmds.has(two)) { i += 2; continue; }
+      // Comandos de pontuação (\,, \;, \:, \!) — ignorar
+      const dois = s.slice(i, i + 2);
+      if (comandosPontuacao.has(dois)) { i += 2; continue; }
 
+      // Comandos que começam com "\" (ex.: \forall, \neg, \left, \text, ...)
       if (s[i] === '\\') {
-        const kw = matchKeyword();
+        const kw = casarPalavraChave();
         if (kw) { tokens.push(kw); continue; }
+
+        // Nome do comando (\left, \text, \color, ...)
         let j = i + 1;
         while (j < s.length && /[A-Za-z]/.test(s[j])) j++;
-        const cmd = s.slice(i + 1, j);
-        if (skipWordCmds.has(cmd)) {
+        const comando = s.slice(i + 1, j);
+
+        // Se for um comando visual, pula opcionalmente o grupo {...}
+        if (comandosVisuais.has(comando)) {
           i = j;
-          if (s[i] === '{') i = skipBalancedGroup(i);
+          if (s[i] === '{') i = pularGrupoBalanceado(i);
           continue;
         }
-        throw new Error(`Token inválido (comando \\${cmd})`);
+
+        throw new Error(`Token inválido (comando \\${comando})`);
       }
 
-      const kw2 = matchKeyword();
+      // Tenta novamente casar palavras-chave de 1 char (ex.: "∀", "∧", "↔")
+      const kw2 = casarPalavraChave();
       if (kw2) { tokens.push(kw2); continue; }
 
+      // Identificadores (predicados, funções, variáveis): P, Q, f, x1, y2, foo, etc.
       if (/[A-Za-z_]/.test(c)) {
         let j = i + 1;
         while (j < s.length && /[A-Za-z0-9_\u00C0-\u017F]/.test(s[j])) j++;
@@ -225,252 +315,286 @@ function setCode(sel, text) {
         continue;
       }
 
+      // Se nada casou, reporta onde travou (útil para depurar)
       throw new Error(`Token inválido em "${s.slice(i, i + 12)}"`);
     }
 
     return tokens;
   }
 
-  /* --------- Parser --------- */
-  function parse(input) {
-    const toks = tokenize(input);
+  /* ------------------------------- Parser ------------------------------ */
+  /**
+   * Gramática descendente recursiva:
+   *  - parseIff -> parseImp <-> parseImp ...
+   *  - parseImp -> parseOr  -> parseAnd -> parseUnary -> parsePrimary
+   *  - Suporta listas em quantificadores: \forall x,y,z. ...
+   *  - Trata igualdade (=) e desigualdade (≠) como literais.
+   */
+  function analisar(entrada) {
+    const toks = tokenizar(entrada);
     let pos = 0;
 
-    const peek = () => toks[pos] || { type: 'EOF' };
-    const eat  = (t) => { const x = peek(); if (x.type !== t) throw new Error(`Esperado ${t}, obtido ${x.type}`); pos++; return x; };
-    const tryEat = (t) => (peek().type === t ? (pos++, true) : false);
+    const ver = () => toks[pos] || { type: 'EOF' };
+    const comer = (t) => { const x = ver(); if (x.type !== t) throw new Error(`Esperado ${t}, obtido ${x.type}`); pos++; return x; };
+    const tentarComer = (t) => (ver().type === t ? (pos++, true) : false);
 
-    function parseTerm() {
-      const id = eat('ID').value;
-      if (tryEat('LP')) {
+    // Termo: id | id(termo, termo, ...)
+    function analisarTermo() {
+      const id = comer('ID').value;
+      if (tentarComer('LP')) {
         const args = [];
-        if (peek().type !== 'RP') {
-          args.push(parseTerm());
-          while (tryEat('COMMA')) args.push(parseTerm());
+        if (ver().type !== 'RP') {
+          args.push(analisarTermo());
+          while (tentarComer('COMMA')) args.push(analisarTermo());
         }
-        eat('RP');
+        comer('RP');
         return { kind: 'func', name: id, args };
       }
       return { kind: 'sym', name: id };
     }
 
-    function tryParseEquality() {
-      const save = pos;
+    // Tenta analisar uma igualdade/desigualdade: termo (=|≠) termo
+    function tentarAnalisarIgualdade() {
+      const salvo = pos;
       try {
-        if (peek().type !== 'ID' && peek().type !== 'LP') return null;
-        if (peek().type === 'LP') return null;
-        const leftTerm = parseTerm();
-        const op = peek().type;
-        if (op !== 'EQ' && op !== 'NEQ') { pos = save; return null; }
+        if (ver().type !== 'ID' && ver().type !== 'LP') return null;
+        if (ver().type === 'LP') return null; // evita conflitos com "( ... )"
+        const esquerdo = analisarTermo();
+        const op = ver().type;
+        if (op !== 'EQ' && op !== 'NEQ') { pos = salvo; return null; }
         pos++;
-        const rightTerm = parseTerm();
-        return { type: op === 'EQ' ? 'eq' : 'neq', left: leftTerm, right: rightTerm };
-      } catch { pos = save; return null; }
+        const direito = analisarTermo();
+        return { type: op === 'EQ' ? 'eq' : 'neq', left: esquerdo, right: direito };
+      } catch { pos = salvo; return null; }
     }
 
-    function parseAtom() {
-      const name = eat('ID').value;
+    // Predicado: Nome(args?)
+    function analisarAtomo() {
+      const nome = comer('ID').value;
       let args = [];
-      if (tryEat('LP')) {
-        if (peek().type !== 'RP') {
-          args.push(parseTerm());
-          while (tryEat('COMMA')) args.push(parseTerm());
+      if (tentarComer('LP')) {
+        if (ver().type !== 'RP') {
+          args.push(analisarTermo());
+          while (tentarComer('COMMA')) args.push(analisarTermo());
         }
-        eat('RP');
+        comer('RP');
       }
-      return { type: 'pred', name, args };
+      return { type: 'pred', name: nome, args };
     }
 
-    function parsePrimary() {
-      const t = peek();
+    function analisarPrimario() {
+      const t = ver();
 
-      if (t.type === 'LP') { eat('LP'); const f = parseIff(); eat('RP'); return f; }
+      // ( ... )
+      if (t.type === 'LP') { comer('LP'); const f = analisarIff(); comer('RP'); return f; }
 
+      // Quantificadores: \forall x,y.  ... ou \exists x ...
       if (t.type === 'FORALL' || t.type === 'EXISTS') {
         const q = t.type === 'FORALL' ? 'forall' : 'exists'; pos++;
         const vars = [];
-        vars.push(eat('ID').value);
-        while (tryEat('COMMA')) vars.push(eat('ID').value);
-        tryEat('DOT');
+        vars.push(comer('ID').value);
+        while (tentarComer('COMMA')) vars.push(comer('ID').value);
+        tentarComer('DOT'); // aceita "." ou ":" como separador
 
-        let body;
-        if (peek().type === 'LP') { eat('LP'); body = parseIff(); eat('RP'); }
-        else { body = parseUnary(); }
+        let corpo;
+        if (ver().type === 'LP') { comer('LP'); corpo = analisarIff(); comer('RP'); }
+        else { corpo = analisarUnario(); }
 
-        return vars.reverse().reduce((acc, v) => ({ type: q, v, body: acc }), body);
+        // Expande lista de variáveis em quantificadores aninhados (direita->esquerda)
+        return vars.reverse().reduce((acc, v) => ({ type: q, v, body: acc }), corpo);
       }
 
-      if (t.type === 'NOT') { eat('NOT'); const sub = parseUnary(); return { type: 'not', sub }; }
+      // Negação
+      if (t.type === 'NOT') { comer('NOT'); const sub = analisarUnario(); return { type: 'not', sub }; }
 
-      const eq = tryParseEquality();
+      // Igualdade/Desigualdade?
+      const eq = tentarAnalisarIgualdade();
       if (eq) return eq;
 
-      if (t.type === 'ID') return parseAtom();
+      // Predicado simples
+      if (t.type === 'ID') return analisarAtomo();
 
       throw new Error(`Símbolo inesperado: ${t.type}`);
     }
 
-    function parseUnary() { return parsePrimary(); }
+    function analisarUnario() { return analisarPrimario(); }
 
-    function leftAssoc(parseLower, ops) {
-      let node = parseLower();
-      while (ops.has(peek().type)) {
-        const t = peek().type; pos++;
-        const right = parseLower();
-        const map = { AND: 'and', OR: 'or', IMP: 'imp', IFF: 'iff' };
-        node = { type: map[t], left: node, right };
+    // Ajuda para operadores associativos à esquerda (AND, OR, IMP, IFF)
+    function associarEsquerda(analisarMenor, ops) {
+      let no = analisarMenor();
+      while (ops.has(ver().type)) {
+        const t = ver().type; pos++;
+        const direito = analisarMenor();
+        const mapa = { AND: 'and', OR: 'or', IMP: 'imp', IFF: 'iff' };
+        no = { type: mapa[t], left: no, right: direito };
       }
-      return node;
+      return no;
     }
 
-    const parseAnd = () => leftAssoc(parseUnary, new Set(['AND']));
-    const parseOr  = () => leftAssoc(parseAnd , new Set(['OR']));
-    const parseImp = () => leftAssoc(parseOr  , new Set(['IMP']));
-    const parseIff = () => leftAssoc(parseImp , new Set(['IFF']));
+    const analisarAnd = () => associarEsquerda(analisarUnario, new Set(['AND']));
+    const analisarOr  = () => associarEsquerda(analisarAnd , new Set(['OR']));
+    const analisarImp = () => associarEsquerda(analisarOr  , new Set(['IMP']));
+    const analisarIff = () => associarEsquerda(analisarImp , new Set(['IFF']));
 
-    const ast = parseIff();
-    if (peek().type !== 'EOF') throw new Error("Sobrou entrada após parse.");
+    const ast = analisarIff();
+    if (ver().type !== 'EOF') throw new Error("Sobrou entrada após o parse.");
     return ast;
   }
 
-  /* --------- Pretty LaTeX --------- */
-  function termToLatex(t) {
-    if (t.kind === 'func') return `${t.name}\\left(${t.args.map(termToLatex).join(',\\,')}\\right)`;
+  /* ----------------------- Impressão em LaTeX ------------------------- */
+  function termoParaLatex(t) {
+    if (t.kind === 'func') return `${t.name}\\left(${t.args.map(termoParaLatex).join(',\\,')}\\right)`;
     return t.name;
   }
-  function formulaToLatex(n) {
+  function formulaParaLatex(n) {
     switch (n.type) {
       case 'pred': {
-        const args = n.args?.length ? `\\left(${n.args.map(termToLatex).join(',\\,')}\\right)` : '';
+        const args = n.args?.length ? `\\left(${n.args.map(termoParaLatex).join(',\\,')}\\right)` : '';
         return `${n.name}${args}`;
       }
-      case 'eq':  return `${termToLatex(n.left)}\\,=\\,${termToLatex(n.right)}`;
-      case 'neq': return `${termToLatex(n.left)}\\,\\ne\\,${termToLatex(n.right)}`;
+      case 'eq':  return `${termoParaLatex(n.left)}\\,=\\,${termoParaLatex(n.right)}`;
+      case 'neq': return `${termoParaLatex(n.left)}\\,\\ne\\,${termoParaLatex(n.right)}`;
       case 'not': {
-        const inner = (n.sub.type === 'pred' || n.sub.type === 'eq' || n.sub.type === 'neq')
-          ? formulaToLatex(n.sub)
-          : `\\left(${formulaToLatex(n.sub)}\\right)`;
-        return `\\neg ${inner}`;
+        const interno = (n.sub.type === 'pred' || n.sub.type === 'eq' || n.sub.type === 'neq')
+          ? formulaParaLatex(n.sub)
+          : `\\left(${formulaParaLatex(n.sub)}\\right)`;
+        return `\\neg ${interno}`;
       }
       case 'and':
       case 'or':
       case 'imp':
       case 'iff': {
         const op = { and: '\\land', or: '\\lor', imp: '\\rightarrow', iff: '\\leftrightarrow' }[n.type];
-        const L = (['pred','not','eq','neq'].includes(n.left.type))  ? formulaToLatex(n.left)  : `\\left(${formulaToLatex(n.left)}\\right)`;
-        const R = (['pred','not','eq','neq'].includes(n.right.type)) ? formulaToLatex(n.right) : `\\left(${formulaToLatex(n.right)}\\right)`;
+        const L = (['pred','not','eq','neq'].includes(n.left.type))  ? formulaParaLatex(n.left)  : `\\left(${formulaParaLatex(n.left)}\\right)`;
+        const R = (['pred','not','eq','neq'].includes(n.right.type)) ? formulaParaLatex(n.right) : `\\left(${formulaParaLatex(n.right)}\\right)`;
         return `${L}\\;${op}\\;${R}`;
       }
       case 'forall':
       case 'exists': {
         const q = n.type === 'forall' ? '\\forall' : '\\exists';
-        const body = (['pred','not','eq','neq'].includes(n.body.type))
-          ? formulaToLatex(n.body) : `\\left(${formulaToLatex(n.body)}\\right)`;
-        return `${q}\\, ${n.v}\\, ${body}`;
+        const corpo = (['pred','not','eq','neq'].includes(n.body.type))
+          ? formulaParaLatex(n.body) : `\\left(${formulaParaLatex(n.body)}\\right)`;
+        return `${q}\\, ${n.v}\\, ${corpo}`;
       }
       default: return '?';
     }
   }
 
-  /* --------- Transforms --------- */
-  function elimImpIff(n) {
-    n = clone(n);
-    function go(x) {
+  /* ---------------------- Transformações lógicas ---------------------- */
+  /** Elimina → e ↔ (ficam só ¬, ∧, ∨, quantificadores). */
+  function eliminarImpEbi(n) {
+    n = clonar(n);
+    function ir(x) {
       switch (x.type) {
         case 'iff': {
-          const A = go(x.left), B = go(x.right);
-          return { type: 'and',
+          const A = ir(x.left), B = ir(x.right);
+          return {
+            type: 'and',
             left:  { type: 'or', left: { type: 'not', sub: A }, right: B },
             right: { type: 'or', left: { type: 'not', sub: B }, right: A }
           };
         }
         case 'imp': {
-          const A = go(x.left), B = go(x.right);
+          const A = ir(x.left), B = ir(x.right);
           return { type: 'or', left: { type: 'not', sub: A }, right: B };
         }
-        case 'and': return { type: 'and', left: go(x.left), right: go(x.right) };
-        case 'or' : return { type: 'or' , left: go(x.left), right: go(x.right) };
-        case 'not': return { type: 'not', sub: go(x.sub) };
-        case 'forall': return { type: 'forall', v: x.v, body: go(x.body) };
-        case 'exists': return { type: 'exists', v: x.v, body: go(x.body) };
+        case 'and': return { type: 'and', left: ir(x.left), right: ir(x.right) };
+        case 'or' : return { type: 'or' , left: ir(x.left), right: ir(x.right) };
+        case 'not': return { type: 'not', sub: ir(x.sub) };
+        case 'forall': return { type: 'forall', v: x.v, body: ir(x.body) };
+        case 'exists': return { type: 'exists', v: x.v, body: ir(x.body) };
         default: return x;
       }
     }
-    return go(n);
+    return ir(n);
   }
 
-  function toNNF(n) {
-    function neg(x) {
+  /** Converte para NNF (negações empurradas até os átomos). */
+  function paraNNF(n) {
+    function negar(x) {
       switch (x.type) {
-        case 'not': return toNNF(x.sub);
-        case 'and': return { type: 'or',  left: neg(x.left),  right: neg(x.right) };
-        case 'or' : return { type: 'and', left: neg(x.left),  right: neg(x.right) };
-        case 'forall': return { type: 'exists', v: x.v, body: neg(x.body) };
-        case 'exists': return { type: 'forall', v: x.v, body: neg(x.body) };
+        case 'not': return paraNNF(x.sub);
+        case 'and': return { type: 'or',  left: negar(x.left),  right: negar(x.right) };
+        case 'or' : return { type: 'and', left: negar(x.left),  right: negar(x.right) };
+        case 'forall': return { type: 'exists', v: x.v, body: negar(x.body) };
+        case 'exists': return { type: 'forall', v: x.v, body: negar(x.body) };
         case 'pred':
         case 'eq':
         case 'neq': return { type: 'not', sub: x };
-        default:     return { type: 'not', sub: toNNF(x) };
+        default:     return { type: 'not', sub: paraNNF(x) };
       }
     }
     switch (n.type) {
-      case 'not': return neg(n.sub);
-      case 'and': return { type: 'and', left: toNNF(n.left), right: toNNF(n.right) };
-      case 'or' : return { type: 'or' , left: toNNF(n.left), right: toNNF(n.right) };
-      case 'forall': return { type: 'forall', v: n.v, body: toNNF(n.body) };
-      case 'exists': return { type: 'exists', v: n.v, body: toNNF(n.body) };
+      case 'not': return negar(n.sub);
+      case 'and': return { type: 'and', left: paraNNF(n.left), right: paraNNF(n.right) };
+      case 'or' : return { type: 'or' , left: paraNNF(n.left), right: paraNNF(n.right) };
+      case 'forall': return { type: 'forall', v: n.v, body: paraNNF(n.body) };
+      case 'exists': return { type: 'exists', v: n.v, body: paraNNF(n.body) };
       default: return n;
     }
   }
 
-  function uniqName(base, used){ let i=1,n=(base||'x'); while(used.has(n)){ n=`${base}${i++}`;} used.add(n); return n; }
+  /** Gera nome de variável fresca que não conflita com as já usadas. */
+  function nomeUnico(base, usados){
+    let i = 1, n = (base || 'x');
+    while (usados.has(n)) n = `${base}${i++}`;
+    usados.add(n);
+    return n;
+  }
 
-  function standardizeApart(n) {
-    const used = new Set();
-    (function collect(x) {
+  /** Renomeia variáveis ligadas para evitar colisões (standardize apart). */
+  function padronizarVariaveis(n) {
+    const usados = new Set();
+
+    // Coleta nomes já usados (variáveis e símbolos em termos)
+    (function coletar(x) {
       switch (x.type) {
-        case 'pred': x.args.forEach(walkTerm); break;
-        case 'eq'  : walkTerm(x.left); walkTerm(x.right); break;
-        case 'neq' : walkTerm(x.left); walkTerm(x.right); break;
-        case 'not' : collect(x.sub); break;
+        case 'pred': x.args.forEach(visitarTermo); break;
+        case 'eq'  : visitarTermo(x.left); visitarTermo(x.right); break;
+        case 'neq' : visitarTermo(x.left); visitarTermo(x.right); break;
+        case 'not' : coletar(x.sub); break;
         case 'and' :
-        case 'or'  : collect(x.left); collect(x.right); break;
+        case 'or'  : coletar(x.left); coletar(x.right); break;
         case 'forall':
-        case 'exists': used.add(x.v); collect(x.body); break;
+        case 'exists': usados.add(x.v); coletar(x.body); break;
       }
     })(n);
-    function walkTerm(t){ if (t.kind==='func') t.args.forEach(walkTerm); else used.add(t.name); }
-    function substTerm(t,env){
-      if (t.kind==='func') return {kind:'func',name:t.name,args:t.args.map(a=>substTerm(a,env))};
+
+    function visitarTermo(t){ if (t.kind==='func') t.args.forEach(visitarTermo); else usados.add(t.name); }
+
+    function substituirTermo(t,env){
+      if (t.kind==='func') return {kind:'func',name:t.name,args:t.args.map(a=>substituirTermo(a,env))};
       return {kind:t.kind,name:env.get(t.name)||t.name};
     }
-    function go(x, env) {
+
+    function ir(x, env) {
       switch (x.type) {
-        case 'pred': return { type: 'pred', name: x.name, args: x.args.map(a=>substTerm(a,env)) };
-        case 'eq'  : return { type: 'eq' , left: substTerm(x.left,env), right: substTerm(x.right,env) };
-        case 'neq' : return { type: 'neq', left: substTerm(x.left,env), right: substTerm(x.right,env) };
-        case 'not' : return { type: 'not', sub: go(x.sub, env) };
-        case 'and' : return { type: 'and', left: go(x.left,env), right: go(x.right,env) };
-        case 'or'  : return { type: 'or' , left: go(x.left,env), right: go(x.right,env) };
+        case 'pred': return { type: 'pred', name: x.name, args: x.args.map(a=>substituirTermo(a,env)) };
+        case 'eq'  : return { type: 'eq' , left: substituirTermo(x.left,env), right: substituirTermo(x.right,env) };
+        case 'neq' : return { type: 'neq', left: substituirTermo(x.left,env), right: substituirTermo(x.right,env) };
+        case 'not' : return { type: 'not', sub: ir(x.sub, env) };
+        case 'and' : return { type: 'and', left: ir(x.left,env), right: ir(x.right,env) };
+        case 'or'  : return { type: 'or' , left: ir(x.left,env), right: ir(x.right,env) };
         case 'forall':
         case 'exists': {
-          const fresh = uniqName(x.v.replace(/[^a-z]/gi,'')||'x', used);
-          const env2 = new Map(env); env2.set(x.v, fresh);
-          return { type: x.type, v: fresh, body: go(x.body, env2) };
+          const fresco = nomeUnico(x.v.replace(/[^a-z]/gi,'')||'x', usados);
+          const env2 = new Map(env); env2.set(x.v, fresco);
+          return { type: x.type, v: fresco, body: ir(x.body, env2) };
         }
         default: return x;
       }
     }
-    return go(n, new Map());
+    return ir(n, new Map());
   }
 
-  function toPrenex(n) {
-    function pull(x) {
+  /** Move todos os quantificadores para o prefixo (prenexação). */
+  function paraPrenex(n) {
+    function puxar(x) {
       switch (x.type) {
-        case 'forall': { const p = pull(x.body); return { prefix: [{q:'forall',v:x.v}, ...p.prefix], matrix: p.matrix }; }
-        case 'exists': { const p = pull(x.body); return { prefix: [{q:'exists',v:x.v}, ...p.prefix], matrix: p.matrix }; }
-        case 'and'   : { const L=pull(x.left), R=pull(x.right); return { prefix:[...L.prefix,...R.prefix], matrix:{type:'and', left:L.matrix, right:R.matrix} }; }
-        case 'or'    : { const L=pull(x.left), R=pull(x.right); return { prefix:[...L.prefix,...R.prefix], matrix:{type:'or' , left:L.matrix, right:R.matrix} }; }
+        case 'forall': { const p = puxar(x.body); return { prefix: [{q:'forall',v:x.v}, ...p.prefix], matrix: p.matrix }; }
+        case 'exists': { const p = puxar(x.body); return { prefix: [{q:'exists',v:x.v}, ...p.prefix], matrix: p.matrix }; }
+        case 'and'   : { const L=puxar(x.left), R=puxar(x.right); return { prefix:[...L.prefix,...R.prefix], matrix:{type:'and', left:L.matrix, right:R.matrix} }; }
+        case 'or'    : { const L=puxar(x.left), R=puxar(x.right); return { prefix:[...L.prefix,...R.prefix], matrix:{type:'or' , left:L.matrix, right:R.matrix} }; }
         case 'not':
         case 'pred':
         case 'eq':
@@ -478,19 +602,20 @@ function setCode(sel, text) {
         default      : return { prefix: [], matrix: x };
       }
     }
-    return pull(n);
+    return puxar(n);
   }
 
-  function toCNFMatrix(n) {
-    function dist(a,b){
-      if (b.type === 'and') return { type:'and', left: dist(a,b.left), right: dist(a,b.right) };
-      if (a.type === 'and') return { type:'and', left: dist(a.left,b), right: dist(a.right,b) };
+  /** Constrói CNF da matriz (distribui ∨ sobre ∧). */
+  function paraMatrizCNF(n) {
+    function distribuir(a,b){
+      if (b.type === 'and') return { type:'and', left: distribuir(a,b.left), right: distribuir(a,b.right) };
+      if (a.type === 'and') return { type:'and', left: distribuir(a.left,b), right: distribuir(a.right,b) };
       return { type:'or', left:a, right:b };
     }
-    function go(x){
+    function ir(x){
       switch (x.type) {
-        case 'and': return { type:'and', left: go(x.left), right: go(x.right) };
-        case 'or' : return dist(go(x.left), go(x.right));
+        case 'and': return { type:'and', left: ir(x.left), right: ir(x.right) };
+        case 'or' : return distribuir(ir(x.left), ir(x.right));
         case 'not':
         case 'pred':
         case 'eq':
@@ -498,19 +623,20 @@ function setCode(sel, text) {
         default: return x;
       }
     }
-    return go(n);
+    return ir(n);
   }
 
-  function toDNFMatrix(n) {
-    function dist(a,b){
-      if (b.type === 'or') return { type:'or', left: dist(a,b.left), right: dist(a,b.right) };
-      if (a.type === 'or') return { type:'or', left: dist(a.left,b), right: dist(a.right,b) };
+  /** Constrói DNF da matriz (distribui ∧ sobre ∨). */
+  function paraMatrizDNF(n) {
+    function distribuir(a,b){
+      if (b.type === 'or') return { type:'or', left: distribuir(a,b.left), right: distribuir(a,b.right) };
+      if (a.type === 'or') return { type:'or', left: distribuir(a.left,b), right: distribuir(a.right,b) };
       return { type:'and', left:a, right:b };
     }
-    function go(x){
+    function ir(x){
       switch (x.type) {
-        case 'and': return dist(go(x.left), go(x.right));
-        case 'or' : return { type:'or', left: go(x.left), right: go(x.right) };
+        case 'and': return distribuir(ir(x.left), ir(x.right));
+        case 'or' : return { type:'or', left: ir(x.left), right: ir(x.right) };
         case 'not':
         case 'pred':
         case 'eq':
@@ -518,227 +644,233 @@ function setCode(sel, text) {
         default: return x;
       }
     }
-    return go(n);
+    return ir(n);
   }
 
-  
-  function prenexToLatex(prefix, matrix) {
-    const Q = prefix.map(({q,v})=> (q==='forall'?`\\forall\\, ${v}`:`\\exists\\, ${v}`)).join('\\, ');
-    const M = (['pred','not','eq','neq'].includes(matrix.type))
-      ? formulaToLatex(matrix)
-      : `\\left(${formulaToLatex(matrix)}\\right)`;
+  /** Imprime um prefixo + matriz em LaTeX. */
+  function prenexParaLatex(prefixo, matriz) {
+    const Q = prefixo.map(({q,v})=> (q==='forall'?`\\forall\\, ${v}`:`\\exists\\, ${v}`)).join('\\, ');
+    const M = (['pred','not','eq','neq'].includes(matriz.type))
+      ? formulaParaLatex(matriz)
+      : `\\left(${formulaParaLatex(matriz)}\\right)`;
     return Q ? `${Q}\\; ${M}` : M;
   }
 
-  function skolemize(prefix, matrix) {
-    const universals = [];
-    const mapping = [];
-    let skF = 1, skC = 1;
+  /** Skolemiza (remove ∃) e retorna a matriz skolemizada + mapeamentos. */
+  function skolemizar(prefixo, matriz) {
+    const universais = [];
+    const mapeamento = [];
+    let contadorFunc = 1, contadorConst = 1;
 
-    function replaceVarInTerm(t, v, term) {
-      if (t.kind === 'func') return { kind:'func', name:t.name, args:t.args.map(a=>replaceVarInTerm(a,v,term)) };
-      return (t.name === v) ? clone(term) : t;
+    function substituirVarNoTermo(t, v, termo) {
+      if (t.kind === 'func') return { kind:'func', name:t.name, args:t.args.map(a=>substituirVarNoTermo(a,v,termo)) };
+      return (t.name === v) ? clonar(termo) : t;
     }
-    function replaceVarInFormula(f, v, term) {
+    function substituirVarNaFormula(f, v, termo) {
       switch (f.type) {
-        case 'pred': return { type:'pred', name:f.name, args:f.args.map(a=>replaceVarInTerm(a,v,term)) };
-        case 'eq'  : return { type:'eq',  left: replaceVarInTerm(f.left,v,term), right: replaceVarInTerm(f.right,v,term) };
-        case 'neq' : return { type:'neq', left: replaceVarInTerm(f.left,v,term), right: replaceVarInTerm(f.right,v,term) };
-        case 'not' : return { type:'not', sub: replaceVarInFormula(f.sub,v,term) };
+        case 'pred': return { type:'pred', name:f.name, args:f.args.map(a=>substituirVarNoTermo(a,v,termo)) };
+        case 'eq'  : return { type:'eq',  left: substituirVarNoTermo(f.left,v,termo), right: substituirVarNoTermo(f.right,v,termo) };
+        case 'neq' : return { type:'neq', left: substituirVarNoTermo(f.left,v,termo), right: substituirVarNoTermo(f.right,v,termo) };
+        case 'not' : return { type:'not', sub: substituirVarNaFormula(f.sub,v,termo) };
         case 'and' :
-        case 'or'  : return { type:f.type, left: replaceVarInFormula(f.left,v,term), right: replaceVarInFormula(f.right,v,term) };
+        case 'or'  : return { type:f.type, left: substituirVarNaFormula(f.left,v,termo), right: substituirVarNaFormula(f.right,v,termo) };
         default: return f;
       }
     }
 
-    let M = clone(matrix);
-    for (const { q, v } of prefix) {
-      if (q === 'forall') universals.push(v);
+    let M = clonar(matriz);
+    for (const { q, v } of prefixo) {
+      if (q === 'forall') universais.push(v);
       else {
-        let term;
-        if (universals.length === 0) term = { kind:'sym',  name:`sk_c${skC++}` };
-        else term = { kind:'func', name:`sk_f${skF++}`, args: universals.map(u => ({ kind:'sym', name:u })) };
-        mapping.push({ exists: v, term });
-        M = replaceVarInFormula(M, v, term);
+        let termo;
+        if (universais.length === 0) termo = { kind:'sym',  name:`sk_c${contadorConst++}` };
+        else termo = { kind:'func', name:`sk_f${contadorFunc++}`, args: universais.map(u => ({ kind:'sym', name:u })) };
+        mapeamento.push({ exists: v, term: termo });
+        M = substituirVarNaFormula(M, v, termo);
       }
     }
-    return { matrixSkolem: M, mapping, universals };
+    return { matrizSkolemizada: M, mapeamento, universais };
   }
 
-  function clausesFromCNF(matrix) {
-    function termToPlain(t){ return t.kind==='func' ? `${t.name}(${t.args.map(termToPlain).join(',')})` : t.name; }
-    function predToStr(p){ const args=p.args?.length?`(${p.args.map(termToPlain).join(',')})`:''; return `${p.name}${args}`; }
+  /** Extrai lista de cláusulas (array de arrays de literais) a partir da CNF. */
+  function clausulasDeCNF(matriz) {
+    function termoPlano(t){ return t.kind==='func' ? `${t.name}(${t.args.map(termoPlano).join(',')})` : t.name; }
+    function predicadoStr(p){ const args=p.args?.length?`(${p.args.map(termoPlano).join(',')})`:''; return `${p.name}${args}`; }
 
-    function litToStr(n){
-      if (n.type === 'pred') return predToStr(n);
-      if (n.type === 'not' && n.sub.type === 'pred') return `~${predToStr(n.sub)}`;
-      if (n.type === 'eq')  return `(${termToPlain(n.left)}=${termToPlain(n.right)})`;
-      if (n.type === 'neq') return `(${termToPlain(n.left)}≠${termToPlain(n.right)})`;
-      if (n.type === 'not' && n.sub.type === 'eq')  return `~(${termToPlain(n.sub.left)}=${termToPlain(n.sub.right)})`;
-      if (n.type === 'not' && n.sub.type === 'neq') return `~(${termToPlain(n.sub.left)}≠${termToPlain(n.sub.right)})`;
+    function literalStr(n){
+      if (n.type === 'pred') return predicadoStr(n);
+      if (n.type === 'not' && n.sub.type === 'pred') return `~${predicadoStr(n.sub)}`;
+      if (n.type === 'eq')  return `(${termoPlano(n.left)}=${termoPlano(n.right)})`;
+      if (n.type === 'neq') return `(${termoPlano(n.left)}≠${termoPlano(n.right)})`;
+      if (n.type === 'not' && n.sub.type === 'eq')  return `~(${termoPlano(n.sub.left)}=${termoPlano(n.sub.right)})`;
+      if (n.type === 'not' && n.sub.type === 'neq') return `~(${termoPlano(n.sub.left)}≠${termoPlano(n.sub.right)})`;
       throw new Error("Literal inválido.");
     }
 
-    function splitClauses(n){
-      if (n.type === 'and') return [...splitClauses(n.left), ...splitClauses(n.right)];
-      return [splitLits(n)];
+    function dividirClausulas(n){
+      if (n.type === 'and') return [...dividirClausulas(n.left), ...dividirClausulas(n.right)];
+      return [dividirLiterais(n)];
     }
-    function splitLits(n){
-      if (n.type === 'or') return [...splitLits(n.left), ...splitLits(n.right)];
-      return [litToStr(n)];
+    function dividirLiterais(n){
+      if (n.type === 'or') return [...dividirLiterais(n.left), ...dividirLiterais(n.right)];
+      return [literalStr(n)];
     }
-    return splitClauses(matrix);
+    return dividirClausulas(matriz);
   }
 
-  function hornReport(clauses){
-    const bad = [];
-    clauses.forEach((cl,i) => {
-      let pos = 0;
-      for (const lit of cl) if (!lit.startsWith('~')) pos++;
-      if (pos > 1) bad.push(i+1);
+  /** Relatório de Horn: true se todas as cláusulas têm ≤ 1 literal positivo. */
+  function relatorioHorn(clausulas){
+    const violadoras = [];
+    clausulas.forEach((cl,i) => {
+      let positivos = 0;
+      for (const lit of cl) if (!lit.startsWith('~')) positivos++;
+      if (positivos > 1) violadoras.push(i+1);
     });
-    return { isHorn: bad.length === 0, bad };
+    return { isHorn: violadoras.length === 0, bad: violadoras };
   }
 
-  window.__logic = {
-    parse, elimImpIff, toNNF, standardizeApart, toPrenex,
-    toCNFMatrix, toDNFMatrix, prenexToLatex, skolemize,
-    clausesFromCNF, hornReport, formulaToLatex
+  // Exporta a API para uso no pipeline
+  window.__logica = {
+    analisar,
+    eliminarImpEbi,
+    paraNNF,
+    padronizarVariaveis,
+    paraPrenex,
+    paraMatrizCNF,
+    paraMatrizDNF,
+    prenexParaLatex,
+    skolemizar,
+    clausulasDeCNF,
+    relatorioHorn,
+    formulaParaLatex
   };
 })();
 
-
-/* ---------- Pipeline + Render ---------- */
-async function runPipelineAndRenderAllSafe(src){
+/* =========================================================================
+   Pipeline: analisa, transforma e preenche todos os painéis
+   =========================================================================*/
+/**
+ * Executa toda a sequência de passos (PCNF/PDNF/Cláusal/Horn),
+ * injeta nos painéis e tipografa onde for LaTeX.
+ */
+async function executarPipelineERenderizar(fonte){
   try {
-    clearPanels();
-    if (!src?.trim()) return;
+    limparPaineis();
+    if (!fonte?.trim()) return;
 
-    const L = window.__logic;
-    const ast0 = L.parse(src);
-    const ast1 = L.elimImpIff(ast0);
-    const ast2 = L.toNNF(ast1);
-    const ast3 = L.standardizeApart(ast2);
-    const { prefix, matrix } = L.toPrenex(ast3);
-    const cnf = L.toCNFMatrix(matrix);
-    const dnf = L.toDNFMatrix(matrix);
+    const L = window.__logica;
 
-    // PCNF
-    setLatex('#pcnf-original', L.formulaToLatex(ast0));
-    setLatex('#pcnf-noimp',    L.formulaToLatex(ast1));
-    setLatex('#pcnf-nnf',      L.formulaToLatex(ast2));
-    setLatex('#pcnf-std',      L.formulaToLatex(ast3));
-    setLatex('#pcnf-prenex',   L.prenexToLatex(prefix, matrix));
-    setLatex('#pcnf-final',    L.prenexToLatex(prefix, cnf));
+    // 1) Parse e transformações de base
+    const ast0 = L.analisar(fonte);
+    const ast1 = L.eliminarImpEbi(ast0);
+    const ast2 = L.paraNNF(ast1);
+    const ast3 = L.padronizarVariaveis(ast2);
+    const { prefix: prefixo, matrix: matriz } = L.paraPrenex(ast3);
 
-    // PDNF
-    setLatex('#pdnf-original', L.formulaToLatex(ast0));
-    setLatex('#pdnf-noimp',    L.formulaToLatex(ast1));
-    setLatex('#pdnf-nnf',      L.formulaToLatex(ast2));
-    setLatex('#pdnf-std',      L.formulaToLatex(ast3));
-    setLatex('#pdnf-prenex',   L.prenexToLatex(prefix, matrix));
-    setLatex('#pdnf-final',    L.prenexToLatex(prefix, dnf));
+    // Matrizes normalizadas
+    const cnf = L.paraMatrizCNF(matriz);
+    const dnf = L.paraMatrizDNF(matriz);
 
-    // CLAUSAL (1–5)
-    setLatex('#claus-original', L.formulaToLatex(ast0));
-    setLatex('#claus-noimp',    L.formulaToLatex(ast1));
-    setLatex('#claus-nnf',      L.formulaToLatex(ast2));
-    setLatex('#claus-std',      L.formulaToLatex(ast3));
-    setLatex('#claus-prenex',   L.prenexToLatex(prefix, matrix));
+    // --- PCNF ---
+    definirLatex('#pcnf-original', L.formulaParaLatex(ast0));
+    definirLatex('#pcnf-noimp',    L.formulaParaLatex(ast1));
+    definirLatex('#pcnf-nnf',      L.formulaParaLatex(ast2));
+    definirLatex('#pcnf-std',      L.formulaParaLatex(ast3));
+    definirLatex('#pcnf-prenex',   L.prenexParaLatex(prefixo, matriz));
+    definirLatex('#pcnf-final',    L.prenexParaLatex(prefixo, cnf));
 
+    // --- PDNF ---
+    definirLatex('#pdnf-original', L.formulaParaLatex(ast0));
+    definirLatex('#pdnf-noimp',    L.formulaParaLatex(ast1));
+    definirLatex('#pdnf-nnf',      L.formulaParaLatex(ast2));
+    definirLatex('#pdnf-std',      L.formulaParaLatex(ast3));
+    definirLatex('#pdnf-prenex',   L.prenexParaLatex(prefixo, matriz));
+    definirLatex('#pdnf-final',    L.prenexParaLatex(prefixo, dnf));
 
-  function appendLatex(sel, latex) {
-  const el = document.querySelector(sel);
-  if (!el) return;
-  const div = document.createElement("div");
-  div.className = "mjx";
-  div.innerHTML = `$$${latex}$$`;
-  el.appendChild(div);
-  mjxRender([div]);
-  }
+    // --- Cláusal (passos 1–5 iguais) ---
+    definirLatex('#claus-original', L.formulaParaLatex(ast0));
+    definirLatex('#claus-noimp',    L.formulaParaLatex(ast1));
+    definirLatex('#claus-nnf',      L.formulaParaLatex(ast2));
+    definirLatex('#claus-std',      L.formulaParaLatex(ast3));
+    definirLatex('#claus-prenex',   L.prenexParaLatex(prefixo, matriz));
 
-// === Etapa 6) Skolemização + remoção de ∀ ===
-const { matrixSkolem } = L.skolemize(prefix, matrix);
-{
-  const el = document.querySelector('#claus-skolem');
-  if (el) {
-    el.innerHTML = ""; // limpa
-    const div = document.createElement("div");
-    div.className = "mjx";
-    div.style.textAlign = "center";
-    div.innerHTML = `$$${L.formulaToLatex(matrixSkolem)}$$`;
-    el.appendChild(div);
-    await mjxRender([div]);
-  }
-}
+    // 6) Skolemização (mostrando a matriz skolemizada tipografada)
+    const { matrizSkolemizada } = L.skolemizar(prefixo, matriz);
+    {
+      const el = document.querySelector('#claus-skolem');
+      if (el) {
+        el.innerHTML = ""; // limpa
+        const bloco = document.createElement("div");
+        bloco.className = "mjx";
+        bloco.style.textAlign = "center";
+        bloco.innerHTML = `$$${L.formulaParaLatex(matrizSkolemizada)}$$`;
+        el.appendChild(bloco);
+        await renderizarMJX([bloco]);
+      }
+    }
 
+    // 7) CNF da matriz skolemizada e extração das cláusulas (como LaTeX em lista)
+    const cnfSk = L.paraMatrizCNF(matrizSkolemizada);
+    const clausulas = L.clausulasDeCNF(cnfSk);
 
+    if (clausulas.length) {
+      const linhasLatex = clausulas.map((c,i) =>
+        `${i+1}.\\;\\{ ${
+          c.map(lit => lit.startsWith("~") ? `\\lnot ${lit.slice(1)}` : lit).join(" \\lor ")
+        } \\}`
+      ).join(' \\\\ ');
 
-// 7) CNF e Extração das cláusulas
-const cnfSk = L.toCNFMatrix(matrixSkolem);
-const clauses = L.clausesFromCNF(cnfSk);
+      const el = document.querySelector('#claus-final');
+      if (el) {
+        el.innerHTML = `<p>Cláusulas extraídas:</p>`;
+        const bloco = document.createElement("div");
+        bloco.className = "mjx";
+        bloco.style.textAlign = "center";
+        bloco.innerHTML = `\\[\\begin{gathered}${linhasLatex}\\end{gathered}\\]`;
+        el.appendChild(bloco);
+        await renderizarMJX([bloco]);
+      }
+    }
 
-if (clauses.length) {
-  const latexLines = clauses.map((c,i) =>
-    `${i+1}.\\;\\{ ${
-      c.map(lit => lit.startsWith("~") ? `\\lnot ${lit.slice(1)}` : lit).join(" \\lor ")
-    } \\}`
-  ).join(' \\\\ ');
+    // --- Horn: repete a lista e mostra o relatório ---
+    if (clausulas.length) {
+      const linhasHorn = clausulas.map((c,i) =>
+        `${i+1}.\\;\\{ ${
+          c.map(lit => lit.startsWith("~") ? `\\lnot ${lit.slice(1)}` : lit).join(" \\lor ")
+        } \\}`
+      ).join(' \\\\ ');
 
-  const el = document.querySelector('#claus-final');
-  if (el) {
-    el.innerHTML = `<p>Cláusulas extraídas:</p>`;
-    const div = document.createElement("div");
-    div.className = "mjx";
-    div.style.textAlign = "center";
-    div.innerHTML = `\\[\\begin{gathered}${latexLines}\\end{gathered}\\]`;
-    el.appendChild(div);
-    await mjxRender([div]);
-  }
-}
+      const hc = document.querySelector('#horn-clauses');
+      if (hc) {
+        hc.innerHTML = `<p>Cláusulas extraídas da Forma Clausal:</p>`;
+        const bloco = document.createElement('div');
+        bloco.className = 'mjx';
+        bloco.style.textAlign = 'center';
+        bloco.innerHTML = `\\[\\begin{gathered}${linhasHorn}\\end{gathered}\\]`;
+        hc.appendChild(bloco);
+        await renderizarMJX([bloco]);
+      }
+    }
 
+    const resumoHorn = L.relatorioHorn(clausulas);
+    const elHorn = document.querySelector('#horn-report');
+    if (elHorn) {
+      elHorn.innerHTML = `
+        <div style="text-align:center; font-weight:bold; padding:8px;">
+          ${resumoHorn.isHorn
+            ? 'É Horn: SIM ✅<br> Todas as cláusulas têm ≤ 1 literal positivo'
+            : `É Horn: NÃO ❌<br> Cláusulas que violam: ${resumoHorn.bad.join(', ')}`}
+        </div>
+      `;
+    }
 
-
-// Horn 
-if (clauses.length) {
-  const hornLatexLines = clauses.map((c,i) =>
-    `${i+1}.\\;\\{ ${
-      c.map(lit => lit.startsWith("~") ? `\\lnot ${lit.slice(1)}` : lit).join(" \\lor ")
-    } \\}`
-  ).join(' \\\\ ');
-
-  const hc = document.querySelector('#horn-clauses');
-  if (hc) {
-    hc.innerHTML = `<p>Cláusulas extraídas da Forma Clausal:</p>`;
-    const div = document.createElement('div');
-    div.className = 'mjx';
-    div.style.textAlign = 'center';
-    div.innerHTML = `\\[\\begin{gathered}${hornLatexLines}\\end{gathered}\\]`;
-    hc.appendChild(div);
-    await mjxRender([div]);
-  }
-}
-
-
-// Relatório Horn
-const horn = L.hornReport(clauses);
-const hornEl = document.querySelector('#horn-report');
-if (hornEl) {
-  hornEl.innerHTML = `
-    <div style="text-align:center; font-weight:bold; padding:8px;">
-      ${horn.isHorn
-        ? 'É Horn: SIM ✅<br> Todas as cláusulas têm ≤ 1 literal positivo'
-        : `É Horn: NÃO ❌<br> Cláusulas que violam: ${horn.bad.join(', ')}`}
-    </div>
-  `;
-}
-
-    // Tipografar LaTeX dos blocos mjx
-    await mjxRender(
-      mjxTargets.map(sel => document.querySelector(sel)).filter(Boolean)
+    // Tipografa os blocos LaTeX estáticos dos painéis
+    await renderizarMJX(
+      alvosMJX.map(sel => document.querySelector(sel)).filter(Boolean)
     );
-  } catch (e) {
-    console.error('[pipeline]', e);
-    if (statusBox) { statusBox.textContent = `Aviso: ${e.message}`; statusBox.className = "status err"; }
+
+  } catch (erro) {
+    console.error('[pipeline]', erro);
+    if (caixaStatus) { caixaStatus.textContent = `Aviso: ${erro.message}`; caixaStatus.className = "status err"; }
   }
 }
