@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Programação Lógica</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Configuração do MathJax v3 -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)'], ['$', '$']],
+        displayMath: [['\\[', '\\]'], ['$$', '$$']],
+        processEscapes: true
+      },
+      options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'] },
+      startup: { typeset: false }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+</head>
+
+<body>
+  <main class="container">
+    <header>
+      <h1>Programação Lógica</h1>
+
+
+      <p>Digite uma fórmula bem formada em LaTeX (FBF). Ex.: 
+        <code>(\neg P \vee Q) \wedge P</code> <br>
+        Após, clique nos botões para ver as transformações passo a passo.
+      </p>
+            
+    </header>
+
+
+
+    <!-- Barra de pesquisa compacta -->
+    <section class="editor">
+      <label for="latexInput" class="label">Fórmula LaTeX</label>
+
+      <div class="searchbar">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15.5 14h-.79l-.28-.27a6.471 6.471 0 0 0 1.57-4.23
+                   6.5 6.5 0 1 0-6.5 6.5 6.471 6.471 0 0 0 4.23-1.57l.27.28v.79l5 4.99
+                   L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5
+                   14 7.01 14 9.5 11.99 14 9.5 14z"></path>
+        </svg>
+        <input id="latexInput" type="text" class="search-input"
+               placeholder="\forall z ( R(z) \leftrightarrow \lnot \exists x. P(f(z), x) )" />
+        <button id="clearBtn" type="button" class="btn ghost">Limpar</button>
+      </div>
+      
+
+      <!-- Botões das formas -->
+      <div class="form-buttons">
+  <button type="button" class="pill" data-target="#panel-pcnf">Conjuntiva Prenex</button>
+  <button type="button" class="pill" data-target="#panel-pdnf">Disjuntiva Prenex</button>
+  <button type="button" class="pill" data-target="#panel-clausal">Cláusal</button>
+  <button type="button" class="pill" data-target="#panel-horn">Cláusula de Horn</button>
+
+  <!-- NOVO LINK -->
+  <a href="sobre.html" class="pill about-btn nav-push">Sobre</a>
+
+  <!-- botão externo já existente -->
+  <a href="https://frankalcantara.com/l/index.html" target="_blank" rel="noopener noreferrer"
+     class="intro-btn">Introdução à Programação Lógica</a>
+</div>
+
+      <div id="status" aria-live="polite" class="status"></div>
+    </section>
+
+    <section class="preview">
+      <h2>Pré-visualização</h2>
+      <div id="output" class="output"></div>
+    </section>
+
+    <!-- Painel PCNF -->
+    <section id="panel-pcnf" class="panel hidden">
+      <h2>Forma Normal Conjuntiva Prenex - Passo a passo</h2>
+      <details open>
+        <summary>1) Fórmula original</summary>
+        <div id="pcnf-original" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>2) Transformar implicações(→) e bi-implicações(↔)</summary>
+        <div id="pcnf-noimp" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>3) Eliminar dupla negação</summary>
+        <div id="pcnf-nnf" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>4) Renomear variáveis ligadas</summary>
+        <div id="pcnf-std" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>5) Mover quantificadores para o início (Prenexação)</summary>
+        <div id="pcnf-prenex" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>6) Distribuir a disjunção sobre a conjunção (Conjunção (∧) de disjunções (∨) de literais)</summary>
+        <div id="pcnf-final" class="box mjx"></div>
+      </details>
+    </section>
+
+    <!-- Painel PDNF -->
+    <section id="panel-pdnf" class="panel hidden">
+      <h2>Forma Normal Disjuntiva Prenex - Passo a passo</h2>
+      <details open>
+        <summary>1) Fórmula original</summary>
+        <div id="pdnf-original" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>2) Transformar implicações(→) e bi-implicações(↔)</summary>
+        <div id="pdnf-noimp" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>3) Eliminar dupla negação</summary>
+        <div id="pdnf-nnf" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>4) Renomear variáveis ligadas</summary>
+        <div id="pdnf-std" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>5) Mover quantificadores para o início (Prenexação)</summary>
+        <div id="pdnf-prenex" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>6) Distribuir a conjunção sobre a disjunção (Disjunção (∨) de conjunções (∧) de literais)</summary>
+        <div id="pdnf-final" class="box mjx"></div>
+      </details>
+    </section>
+
+    <!-- Painel Forma Cláusal -->
+    <section id="panel-clausal" class="panel hidden">
+      <h2>Forma Cláusal - Passo a passo</h2>
+      <details open>
+        <summary>1) Fórmula original</summary>
+        <div id="claus-original" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>2) Transformar implicações(→) e bi-implicações(↔)</summary>
+        <div id="claus-noimp" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>3) Eliminar dupla negação</summary>
+        <div id="claus-nnf" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>4) Renomear variáveis ligadas</summary>
+        <div id="claus-std" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>5) Mover quantificadores para o início (Prenexação)</summary>
+        <div id="claus-prenex" class="box mjx"></div>
+      </details>
+      <details>
+        <summary>6) Skolemização(Remoção dos quantificadores existenciais) + Remoção dos quantificadores universais</summary>
+        <div id="claus-skolem" class="box code"></div>
+      </details>
+      <details>
+        <summary>7) Converter Matriz para Forma Normal Conjuntiva e Extrair as cláusulas</summary>
+        <div id="claus-final" class="box code"></div>
+      </details>
+    </section>
+
+    <!-- Painel Horn -->
+    <section id="panel-horn" class="panel hidden">
+      <h2>Cláusula de Horn - Passo a passo</h2>
+      <details open>
+        <summary>1) Forma Cláusal (lista de cláusulas)</summary>
+        <div id="horn-clauses" class="box code"></div>
+      </details>
+      <details>
+        <summary>2) Relatório de Horn (≤1 literal positivo por cláusula)</summary>
+        <div id="horn-report" class="box code"></div>
+      </details>
+    </section>
+
+  </main>
+
+
+
+  <footer class="foot">
+    <small>Projeto realizado na disciplina de Programação Lógica e Funcional</small>
+    
+  </footer>
+
+  <!-- Se você já tem um script.js próprio, pode manter.
+       Este arquivo não implementa a lógica de transformação; só o layout/containers. -->
+  <script src="script.js"></script>
+</body>
+</html>
