@@ -194,13 +194,6 @@ P(x) \lor \forall y Q(y)
 
 ---
 
-## 🌐 Deploy (opcional)
-
-* **GitHub Pages**: faça push do repositório e ative Pages (branch `main`, pasta `/`).
-* **Netlify/Vercel**: arraste a pasta ou conecte o repositório; é site estático.
-
----
-
 ## 🤝 Créditos
 
 * **Alunos**: Davi Marques Caldeira e Vinícius Henrique Budag Coelho
