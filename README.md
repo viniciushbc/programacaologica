@@ -11,7 +11,7 @@ Aplicação web (HTML/CSS/JS puro) que:
   * **Relatório de Horn** (verifica se cada cláusula tem ≤ 1 literal positivo).
 
 Projeto desenvolvido por **Davi Marques Caldeira** e **Vinícius Henrique Budag Coelho**,
-4º período de **Bacharelado em Ciência da Computação**, na disciplina de **Programação Lógica e Funcional** da faculdade **Pontifícia Universidade Católica do Paraná**.
+4º período de **Bacharelado em Ciência da Computação**, da disciplina de **Programação Lógica e Funcional** na instituição **Pontifícia Universidade Católica do Paraná**.
 
 ---
 
