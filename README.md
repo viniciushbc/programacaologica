@@ -66,14 +66,18 @@ O analisador léxico é robusto e aceita:
 
 ## 🛠️ Como rodar
 
-### Opção 1 — Abrir direto
+### Opção 1 — Acesse pelo link
+
+Website do projeto: [Programação Lógica](https://viniciushbc.github.io/programacaologica)
+
+### Opção 2 — Faça download do projeto
 
 1. Baixe/clonar este repositório.
 2. Abra `index.html` em um navegador moderno (Chrome/Firefox/Edge).
 
 > Usa MathJax via CDN; conexão à internet é necessária na primeira carga.
 
-### Opção 2 — Servidor local (recomendado)
+### Opção 3 — Servidor local (recomendado)
 
 Use qualquer servidor estático (ex.: **Live Server** no VS Code).
 
