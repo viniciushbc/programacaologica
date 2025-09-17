@@ -66,11 +66,11 @@ O analisador léxico é robusto e aceita:
 
 ## 🛠️ Como rodar
 
-### Opção 1 — Acesse pelo link
+### Opção 1 — Acesso pelo link
 
 Website do projeto: [Programação Lógica](https://viniciushbc.github.io/programacaologica)
 
-### Opção 2 — Faça download do projeto
+### Opção 2 — Download do projeto
 
 1. Baixe/clonar este repositório.
 2. Abra `index.html` em um navegador moderno (Chrome/Firefox/Edge).
