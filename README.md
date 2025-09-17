@@ -17,9 +17,9 @@ Projeto desenvolvido por **Davi Marques Caldeira** e **Vinícius Henrique Budag 
 
 ## 🔎 Demonstração rápida
 
-Abra `index.html` no navegador, digite uma FBF em LaTeX e selecione o painel desejado:
+Acesse [Programação Lógica](https://viniciushbc.github.io/programacaologica)  no navegador, digite uma FBF em LaTeX e selecione o painel da forma desejada:
 
-* **Exemplos de fórmulas**
+* **Exemplos de fórmulas bem formadas (FBF)**
 
   ```
   \forall z ( R(z) \leftrightarrow \neg \exists x P(f(z), x) )
